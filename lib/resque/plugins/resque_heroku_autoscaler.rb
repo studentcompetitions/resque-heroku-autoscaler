@@ -8,6 +8,7 @@ module Resque
         Resque::Plugins::HerokuAutoscaler::Config
       end
 
+      # Start by scaling up to one if we are at zero and have some in the queue
       def after_enqueue_scale_workers_up(*args)
         if !config.scaling_disabled? && \
           Resque.info[:workers] == 0 && \
@@ -57,7 +58,8 @@ module Resque
 
       def scale
         new_count = config.new_worker_count(Resque.info[:pending])
-        set_workers(new_count) if new_count == 0 || new_count > current_workers
+        # Only scale up, or if we are not working on anything we can scale down to zero
+        set_workers(new_count) if (new_count == 0 && Resque.info[:working] == 0) || new_count > current_workers
         Resque.redis.set('last_scaled', Time.now)
       end
 
