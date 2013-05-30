@@ -63,7 +63,7 @@ module Resque
       def scale
         new_count = autoscaler_config.new_worker_count(Resque.info[:pending])
         # Only scale up, or if we are not working on anything we can scale down to zero
-        set_workers(new_count) if (new_count == 0 && Resque.info[:working] <= 1) || new_count > current_workers
+        set_workers(new_count) if (new_count == 0 && Resque.info[:working] == 0) || new_count > current_workers
         Resque.redis.set('last_scaled', Time.now)
       end
 
@@ -74,7 +74,7 @@ module Resque
       end
 
       def time_to_scale?
-        (Time.now - Time.parse(Resque.redis.get('last_scaled'))) >=  autoscaler_configconfig.wait_time
+        (Time.now - Time.parse(Resque.redis.get('last_scaled'))) >=  autoscaler_config.wait_time
       end
 
       def log(message)
