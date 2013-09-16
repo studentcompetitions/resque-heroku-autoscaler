@@ -5,7 +5,7 @@ module Resque
   module Plugins
     module HerokuAutoscaler
 
-      # Start by scaling up to one if we are at zero and have some in the queue
+      # Scale up to new worker count after enqueue
       def after_enqueue_scale_workers_up(*args)
         if !autoscaler_config.scaling_disabled? && \
           Resque.info[:workers] == 0 && \
