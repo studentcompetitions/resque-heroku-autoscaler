@@ -53,16 +53,12 @@ module Resque
 
       private
 
-      # Call this method autoscaler_config instead of just config to avoid conflict when using with resque-mailer
-      # The method gets added as a class method on the mailer in that case, where Rails assumes it to be of type
-      # ActiveSupport::InheritableOptions
       def autoscaler_config
         Resque::Plugins::HerokuAutoscaler::Config
       end
 
       def scale
         new_count = autoscaler_config.new_worker_count(Resque.info[:pending])
-        # Only scale up, or if we are not working on anything we can scale down to zero
         set_workers(new_count) if (new_count == 0 && Resque.info[:working] <= 1) || new_count > current_workers
         Resque.redis.set('last_scaled', Time.now)
       end
