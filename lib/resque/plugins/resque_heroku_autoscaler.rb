@@ -4,16 +4,14 @@ require 'resque/plugins/heroku_autoscaler/config'
 module Resque
   module Plugins
     module HerokuAutoscaler
-      def config
-        Resque::Plugins::HerokuAutoscaler::Config
-      end
 
+      # Scale up to new worker count after enqueue
       def after_enqueue_scale_workers_up(*args)
-        if !config.scaling_disabled? && \
+        if !autoscaler_config.scaling_disabled? && \
           Resque.info[:workers] == 0 && \
-          config.new_worker_count(Resque.info[:pending]) >= 1
+          autoscaler_config.new_worker_count(Resque.info[:pending]) >= 1
 
-          set_workers(1)
+          set_workers(autoscaler_config.new_worker_count(Resque.info[:pending]))
           Resque.redis.set('last_scaled', Time.now)
         end
       end
@@ -28,16 +26,16 @@ module Resque
 
       def set_workers(number_of_workers)
         if number_of_workers != current_workers
-          heroku_api.post_ps_scale(config.heroku_app, 'worker', number_of_workers)
+          heroku_api.post_ps_scale(autoscaler_config.heroku_app, 'worker', number_of_workers)
         end
       end
 
       def current_workers
-        heroku_api.get_ps(config.heroku_app).body.count {|p| p['process'].match(/worker\.\d+/) }
+        heroku_api.get_ps(autoscaler_config.heroku_app).body.count {|p| p['process'].match(/worker\.\d+/) }
       end
 
       def heroku_api
-        @heroku_api ||= ::Heroku::API.new(api_key: config.heroku_api_key)
+        @heroku_api ||= ::Heroku::API.new(api_key: autoscaler_config.heroku_api_key)
       end
 
       def self.config
@@ -45,7 +43,7 @@ module Resque
       end
 
       def calculate_and_set_workers
-        unless config.scaling_disabled?
+        unless autoscaler_config.scaling_disabled?
           wait_for_task_or_scale
           if time_to_scale?
             scale
@@ -55,9 +53,17 @@ module Resque
 
       private
 
+      def autoscaler_config
+        Resque::Plugins::HerokuAutoscaler::Config
+      end
+
       def scale
-        new_count = config.new_worker_count(Resque.info[:pending])
-        set_workers(new_count) if new_count == 0 || new_count > current_workers
+        new_worker_count = autoscaler_config.new_worker_count(Resque.info[:pending])
+
+        if (new_worker_count == 0 && Resque.info[:working] <= 1) || new_worker_count > current_workers
+          set_workers(new_worker_count)
+        end
+
         Resque.redis.set('last_scaled', Time.now)
       end
 
@@ -68,7 +74,7 @@ module Resque
       end
 
       def time_to_scale?
-        (Time.now - Time.parse(Resque.redis.get('last_scaled'))) >=  config.wait_time
+        (Time.now - Time.parse(Resque.redis.get('last_scaled'))) >=  autoscaler_config.wait_time
       end
 
       def log(message)
